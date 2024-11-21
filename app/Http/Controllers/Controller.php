@@ -20,4 +20,15 @@ abstract class Controller
         'total' => $total
       ));
     }
+
+    public function validationError($errors)
+    {
+        $errorCnt = $errors->count();
+        $message = $errors->first();
+        $message .= ($errorCnt > 1) ? ' (and ' . $errorCnt - 1 . ' more error)' : '' ;
+        return response()->json([
+            'message'  => $message,
+            'errors' => $errors,
+        ], 422);
+    }
 }

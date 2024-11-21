@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class Usercontroller extends Controller
 {
@@ -54,7 +57,7 @@ class Usercontroller extends Controller
    */
   public function store(Request $request)
   {
-    //
+    return $this->update($request);
   }
 
   /**
@@ -74,9 +77,41 @@ class Usercontroller extends Controller
   /**
    * Update the specified resource in storage.
    */
-  public function update(Request $request, string $id)
+  public function update(Request $request,$id = null)
   {
-    //
+    $rule = [
+        'name' => ['required', 'string', 'max:255'],
+        'email' => ['required', 'string', 'lowercase', 'email', 'max:255'], //, 'unique:'.User::class],
+        'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
+    ];
+
+    // $request->validate($rule);
+
+    $validator = Validator::make($request->all(), $rule);
+
+    if ($validator->fails()) {
+        $this->validationError($validator->messages());
+    }
+
+    // Retrieve the validated input...
+    $validatedData = $validator->validated();
+
+
+    return DB::transaction(function () use ($validatedData, $id) {
+
+      // Find or create user
+      $record = $id ? User::find($id) : new User;
+
+      if (!$record) {
+        return response()->json(['message' => 'Record not found.'], 404);
+      }
+
+      // Update the record
+      $record->fill($validatedData)->save();
+
+      return response()->json($record, $id ? 200 : 201); // Return appropriate status codes
+    }, 3); // Retry up to 3 times in case of a deadlock
+
   }
 
   /**
