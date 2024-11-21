@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -15,7 +16,7 @@ class Usercontroller extends Controller
    */
   public function index(Request $request)
   {
-    //?search=3210&sort=name&order=desc&perPage=5&page=3
+    //?search=3210&sort=name&order=desc&page=3&perPage=5
 
     // Filter query
     $filteredQuery = User::query()
@@ -77,12 +78,28 @@ class Usercontroller extends Controller
   /**
    * Update the specified resource in storage.
    */
-  public function update(Request $request,$id = null)
+  public function update(Request $request, $id = null)
   {
     $rule = [
-        'name' => ['required', 'string', 'max:255'],
-        'email' => ['required', 'string', 'lowercase', 'email', 'max:255'], //, 'unique:'.User::class],
-        'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
+        'name' => [
+            'required',
+            'string',
+            'max:255',
+        ],
+        'email' => [
+            'required',
+            'string',
+            'lowercase',
+            'email',
+            'max:255',
+            $id ? Rule::unique('users', 'email')->ignore($id) : Rule::unique('users', 'email'),
+        ],
+        'password' => [
+            $id  ? 'sometime' : 'required',
+            'string',
+            'confirmed',
+            Rules\Password::defaults()
+        ],
     ];
 
     // $request->validate($rule);
@@ -117,8 +134,14 @@ class Usercontroller extends Controller
   /**
    * Remove the specified resource from storage.
    */
-  public function destroy(string $id)
+  public function destroy($id)
   {
-    //
+    $record = User::select('id', 'name', 'email')->where('id',$id)->first();
+
+    if (!$record) {
+      return response()->json(['message' => 'No Record found.'], 404); // Handle not found
+    }
+    $record->delete();
+    return response()->noContent()->setStatusCode(204);
   }
 }

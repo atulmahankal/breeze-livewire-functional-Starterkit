@@ -26,7 +26,6 @@ state([
         'perPage' => $this->perPage ?? 10,
         'page' => $this->page ?? 1,
       ]);
-
       $response = app(App\Http\Controllers\UserController::class)->index($request);
 
       $data = $response->getData(true);
@@ -80,6 +79,7 @@ $saveUser = function () {
   try {
     $userId = $this->user['id'] ?? null;
     $request = new Request($this->user);
+    $request->setMethod('PATCH'); // Set the request method to PATCH
     $response = app(App\Http\Controllers\UserController::class)->update($request, $userId);
 
     $result = $response->getData(true);
@@ -107,8 +107,26 @@ $saveUser = function () {
   }
 };
 
-$deleteUser = function () {
-  dd('Delete action');
+$deleteUser = function ($userId) {
+  try {
+    $response = app(App\Http\Controllers\UserController::class)->destroy($userId);
+
+    $status = $response->getStatusCode();
+    if($status == 204) {
+      $this->redirectIntended(request()->header('Referer'), navigate: true);
+    } else {
+      dd('failed:',$response);
+      Session::flash('status', __($response));
+    }
+  } catch (\Exception $e) {
+    // Get the exception type
+    $exceptionType = get_class($e);
+    dd('error:', $e);
+
+    // dd($e->getMessage(), $e->getTrace()); // Inspect the error message and stack trace
+    // $this->dispatch('close-modal', 'user-modal');
+    Session::flash('status', __($e->getMessage()));
+  }
 }
 ?>
 
@@ -203,7 +221,7 @@ $deleteUser = function () {
 
             <x-danger-button class="ms-3 outline"
               type="button"
-              wire:click="deleteUser"
+              wire:click="deleteUser({{ $user['id'] }})"
               wire:confirm="Are you sure you want to delete this user?"
             >
               Delete
