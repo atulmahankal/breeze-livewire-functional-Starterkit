@@ -2,6 +2,8 @@
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use App\Http\Requests\UserRequest;
 use function Livewire\Volt\{layout, title, state, computed, on};
 
 layout('layouts.app');
@@ -76,35 +78,46 @@ $updateUser = function ($userId) {
 };
 
 $saveUser = function () {
-  try {
+//   try {
     $userId = $this->user['id'] ?? null;
-    $request = new Request($this->user);
-    $request->setMethod('PATCH'); // Set the request method to PATCH
-    $response = app(App\Http\Controllers\UserController::class)->update($request, $userId);
 
-    $result = $response->getData(true);
-    $status = $response->getStatusCode();
-    if($status == 200 || $status == 201) {
-      $this->redirectIntended(request()->header('Referer'), navigate: true);
-      $this->dispatch('close-modal', 'user-modal');
+    // Make the POST request
+    if(isset($this->user['id'])){
+        $response = Http::withHeaders([
+            'Accept' => 'application/json',
+            'X-CSRF-TOKEN' => session()->token(),
+        ])->put(url(`api/users/${$this->user['id']}`), $this->user);
     } else {
-      dd('failed:',$result['message']);
-      Session::flash('status', __($result['message']));
+        $response = Http::withHeaders([
+            'Accept' => 'application/json',
+            'X-CSRF-TOKEN' => session()->token(),
+        ])->post(url('api/users'), $this->user);
+        dd('working with sanctum');
     }
-  } catch (\Illuminate\Validation\ValidationException $e) {
-    // Add errors to the Livewire component's errors collection
-    foreach ($e->errors() as $key => $messages) {
-      $this->addError($key, implode(', ', $messages));
-    }
-  } catch (\Exception $e) {
-    // Get the exception type
-    $exceptionType = get_class($e);
-    dd('error:', $e);
 
-    // dd($e->getMessage(), $e->getTrace()); // Inspect the error message and stack trace
-    // $this->dispatch('close-modal', 'user-modal');
-    Session::flash('status', __($e->getMessage()));
-  }
+    $responseBody = json_decode($response->body(), true);
+
+    if($response->failed()){
+        $this->dispatch('show-error', $responseBody['message']);
+        if(isset($responseBody['errors'])){
+            foreach ($responseBody['errors'] as $key => $messages) {
+                $this->addError($key, implode(', ', $messages));
+            }
+        }
+    }
+
+    if($response->successful()){
+        $this->dispatch('close-modal', 'user-modal');
+        $this->dispatch('show-message', $responseBody['message'] ?? 'Record saved successfully!');
+    }
+
+//   } catch (\Exception $e) {
+//     // Get the exception type
+//     // dd("Exception Type: ".get_class($e), $e->getMessage());
+
+//     $this->dispatch('show-error', $e->getMessage());
+//     // Session::flash('status', __($e->getMessage()));
+//   }
 };
 
 $deleteUser = function ($userId) {
@@ -129,6 +142,23 @@ $deleteUser = function ($userId) {
   }
 }
 ?>
+{{-- Meta Section --}}
+@section('meta')
+    <meta name="description" content="CRUD operation for Users">
+    <meta name="keywords" content="Laravel, Blade, Template">
+@endsection
+
+{{-- Additional Scripts --}}
+@push('scripts')
+<script>
+    document.addEventListener('show-error', (event) => {
+        alert(`${event.detail}`);
+    });
+    document.addEventListener('show-message', (event) => {
+        alert(`${event.detail}`);
+    });
+</script>
+@endpush
 
 <div>
   <div class="flex justify-between px-6 py-2 bg-white">

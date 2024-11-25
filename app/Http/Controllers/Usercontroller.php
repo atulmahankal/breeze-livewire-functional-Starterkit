@@ -6,7 +6,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
+use App\Http\Requests\UserRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
 class Usercontroller extends Controller
@@ -18,15 +20,20 @@ class Usercontroller extends Controller
   {
     //?search=3210&sort=name&order=desc&page=3&perPage=5
 
+    $query = User::query();
+
+    // Total users count (before filtering)
+    $total = $query->count();
+
     // Filter query
-    $filteredQuery = User::query()
+    $filteredQuery = $query
       ->when($request->has('search'), function ($query) use ($request) {
-        $query->where('name', 'like', "%{$request->search}%")
+        $query->where('name', 'LIKE', "%{$request->search}%")
           ->orWhere('email', 'LIKE', "%{$request->search}%")
           ->orWhere('contact', 'LIKE', "%{$request->search}%");
       })
       ->when($request->has('name'), function ($query) use ($request) {
-        $query->where('name', 'like', "%{$request->name}%");
+        $query->where('name', 'LIKE', "%{$request->name}%");
       })
       ->when($request->has('email'), function ($query) use ($request) {
         $query->where('email', 'LIKE', "%{$request->email}%");
@@ -47,7 +54,7 @@ class Usercontroller extends Controller
       ->select('id', 'name', 'email');
 
     return $this->customePagination(
-      User::count(),
+      $total,
       $filteredQuery,
       $request->perPage ?? 10
     );
@@ -56,9 +63,9 @@ class Usercontroller extends Controller
   /**
    * Store a newly created resource in storage.
    */
-  public function store(Request $request)
+  public function store(UserRequest $request)
   {
-    return $this->update($request);
+    return $this->update($request); // Delegate to update method
   }
 
   /**
@@ -69,7 +76,7 @@ class Usercontroller extends Controller
     $record = User::select('id', 'name', 'email')->where('id',$id)->first();
 
     if (!$record) {
-      return response()->json(['message' => 'No Record found.'], 404); // Handle not found
+      return response()->json(['message' => 'No record found.'], 404); // Handle not found
     }
 
     return response()->json($record);
@@ -78,57 +85,65 @@ class Usercontroller extends Controller
   /**
    * Update the specified resource in storage.
    */
-  public function update(Request $request, $id = null)
+  public function update(UserRequest $request, $id = null)
   {
-    $rule = [
-        'name' => [
-            'required',
-            'string',
-            'max:255',
-        ],
-        'email' => [
-            'required',
-            'string',
-            'lowercase',
-            'email',
-            'max:255',
-            $id ? Rule::unique('users', 'email')->ignore($id) : Rule::unique('users', 'email'),
-        ],
-        'password' => [
-            $id  ? 'sometime' : 'required',
-            'string',
-            'confirmed',
-            Rules\Password::defaults()
-        ],
-    ];
+    // $rule = [
+    //     'name' => [
+    //         'required',
+    //         'string',
+    //         'max:255',
+    //     ],
+    //     'email' => [
+    //         'required',
+    //         'string',
+    //         'lowercase',
+    //         'email',
+    //         'max:255',
+    //         $id ? Rule::unique('users', 'email')->ignore($id) : Rule::unique('users', 'email'),
+    //     ],
+    //     'password' => [
+    //         $id  ? 'sometime' : 'required',
+    //         'string',
+    //         'confirmed',
+    //         Rules\Password::defaults()
+    //     ],
+    // ];
 
-    // $request->validate($rule);
+    // // $request->validate($rule);
 
-    $validator = Validator::make($request->all(), $rule);
+    // $validator = Validator::make($request->all(), $rule);
 
-    if ($validator->fails()) {
-        $this->validationError($validator->messages());
-    }
+    // if ($validator->fails()) {
+    //     $this->validationError($validator->messages());
+    // }
 
-    // Retrieve the validated input...
-    $validatedData = $validator->validated();
+    // // Retrieve the validated input...
+    // $validatedData = $validator->validated();
 
 
-    return DB::transaction(function () use ($validatedData, $id) {
+    return DB::transaction(function () use ($request, $id) {
+      // Get only validated data
+      $validatedData = $request->validated();
 
-      // Find or create user
+      // Find or create record
       $record = $id ? User::find($id) : new User;
 
       if (!$record) {
-        return response()->json(['message' => 'Record not found.'], 404);
+        return response()->json(['message' => 'No record found.'], 404);
       }
 
       // Update the record
-      $record->fill($validatedData)->save();
+      $oldPassword = $record->password ?? Hash::make('password');
+      $record->fill([
+        'name' => $validatedData['name'],
+        'email' => $validatedData['email'],
+        'password' => (isset($validatedData['password']) && $validatedData['password'])
+          ? Hash::make($validatedData['password'])
+          : $oldPassword
+      ])->save();
 
       return response()->json($record, $id ? 200 : 201); // Return appropriate status codes
     }, 3); // Retry up to 3 times in case of a deadlock
-
   }
 
   /**
@@ -136,7 +151,8 @@ class Usercontroller extends Controller
    */
   public function destroy($id)
   {
-    $record = User::select('id', 'name', 'email')->where('id',$id)->first();
+    // Find record
+    $record = User::where('id',$id)->first();
 
     if (!$record) {
       return response()->json(['message' => 'No Record found.'], 404); // Handle not found
